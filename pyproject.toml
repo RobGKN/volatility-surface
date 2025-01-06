@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "volatility-surface"
+version = "0.1.0"
+description = "Volatility surface visualisation and analysis tool"
+authors = ["Rob Konstanty-Nicholson"]
+readme = "README.md"
+packages = [
+    { include = "volsurface", from = "src" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+numpy = "^2.2.1"
+pandas = "^2.2.3"
+scipy = "^1.15.0"
+matplotlib = "^3.10.0"
+plotly = "^5.24.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.4"
+black = "^24.10.0"
+mypy = "^1.14.1"
+isort = "^5.13.2"
+pytest-cov = "^6.0.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
