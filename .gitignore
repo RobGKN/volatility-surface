@@ -35,3 +35,4 @@ ENV/
 # Project specific
 *.csv
 *.xlsx
+node_modules/
