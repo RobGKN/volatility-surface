@@ -263,7 +263,7 @@ class VolatilitySurface:
         
         return metrics.compute_basic_metrics()
 
-    def to_visualization_format(self) -> Dict:
+    def to_react_visualization_format(self) -> Dict:
         """
         Convert surface data to format suitable for 3D visualization.
         
@@ -398,4 +398,79 @@ class VolatilitySurface:
             raise RuntimeError(f"Invalid values encountered in surface: {str(e)}")
         except Exception as e:
             logger.error(f"Unexpected error in visualization formatting: {str(e)}")
+            raise RuntimeError(f"Failed to format surface for visualization: {str(e)}")
+    
+    
+    def to_visualization_format(self) -> Dict:
+        """
+        Convert surface data to format suitable for Plotly visualization.
+        
+        Returns:
+            Dictionary containing:
+            - x: Strike prices array
+            - y: Maturities array
+            - z: Volatility surface array
+            - metrics: Key surface metrics
+            - metadata: Additional surface properties
+            
+        Raises:
+            ValueError: If surface hasn't been generated
+        """
+        if self._cached_surface is None or self._cached_grid is None:
+            raise ValueError("Surface must be generated before visualization")
+            
+        # Get raw data
+        surface = self._cached_surface
+        grid = self._cached_grid
+        
+        # Validate data
+        if surface.shape != (len(grid.strikes), len(grid.maturities)):
+            raise ValueError(f"Surface shape {surface.shape} doesn't match grid dimensions: "
+                            f"strikes={len(grid.strikes)}, maturities={len(grid.maturities)}")
+        
+        if np.any(np.isnan(surface)) or np.any(np.isinf(surface)):
+            raise ValueError("Surface contains NaN or Inf values")
+        
+        try:
+            # Compute metrics once
+            metrics = self.compute_metrics()
+            
+            # Format for return
+            # Note: tolist() converts numpy arrays to Python lists for JSON serialization
+            return {
+                # Core Plotly data
+                "x": grid.strikes.tolist(),  # Strike prices
+                "y": grid.maturities.tolist(),  # Maturities
+                "z": surface.tolist(),  # Implied volatilities
+                
+                # Additional data for analysis
+                "atm_line": {
+                    "maturities": grid.maturities.tolist(),
+                    "vols": surface[np.abs(grid.strikes - grid.spot).argmin()].tolist()
+                },
+                
+                # Market data
+                "market_params": {
+                    "spot": float(grid.spot),
+                    "rate": float(grid.rate),
+                    "min_strike": float(grid.strikes.min()),
+                    "max_strike": float(grid.strikes.max()),
+                    "min_maturity": float(grid.maturities.min()),
+                    "max_maturity": float(grid.maturities.max())
+                },
+                
+                # Surface metrics
+                "metrics": {
+                    "atm_vol": float(metrics["atm_vol"]),
+                    "skew_1m": float(metrics["skew_1m"]),
+                    "term_structure_slope": float(metrics["term_structure_slope"]),
+                    # Add any other metrics you want to display
+                },
+                
+                # Model validation
+                "arbitrage_checks": self.validate_arbitrage()
+            }
+                
+        except Exception as e:
+            logger.error(f"Error formatting surface for visualization: {str(e)}")
             raise RuntimeError(f"Failed to format surface for visualization: {str(e)}")
