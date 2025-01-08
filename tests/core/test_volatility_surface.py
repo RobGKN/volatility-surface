@@ -190,3 +190,77 @@ def test_validate_arbitrage_error_handling():
     
     with pytest.raises(ValueError):
         surface.validate_arbitrage()
+        
+        
+def test_basic_metrics_computation(basic_grid, sabr_model):
+    """Test if basic metrics computation runs without errors and returns sensible values"""
+    surface = VolatilitySurface(sabr_model)
+    surface.generate_surface(basic_grid)
+    
+    metrics = surface.compute_metrics()
+    
+    # Check all expected keys are present
+    expected_keys = {
+        "atm_vol", 
+        "average_atm_vol", 
+        "min_vol", 
+        "max_vol", 
+        "average_vol",
+        "skew_1m",
+        "term_structure_slope"
+    }
+    assert set(metrics.keys()) == expected_keys
+    
+    # Check value ranges
+    assert 0 < metrics["min_vol"] < metrics["max_vol"] < 1.0  # Vols should be between 0 and 100%
+    assert 0 < metrics["average_vol"] < 1.0
+    assert metrics["min_vol"] <= metrics["average_vol"] <= metrics["max_vol"]
+    
+    # ATM vol should be within surface bounds
+    assert metrics["min_vol"] <= metrics["atm_vol"] <= metrics["max_vol"]
+
+def test_metrics_error_handling(basic_grid, sabr_model):
+    """Test metrics computation error handling"""
+    surface = VolatilitySurface(sabr_model)
+    
+    # Should raise error if surface not generated
+    with pytest.raises(ValueError, match="Surface must be generated"):
+        surface.compute_metrics()
+    
+    # Should handle single maturity case
+    small_grid = SurfaceGrid(
+        strikes=basic_grid.strikes,
+        maturities=np.array([0.5]),  # Single maturity
+        spot=basic_grid.spot,
+        rate=basic_grid.rate
+    )
+    
+    surface.generate_surface(small_grid)
+    metrics = surface.compute_metrics()
+    
+    # Term structure slope should be 0 for single maturity
+    assert metrics["term_structure_slope"] == 0.0
+    
+    # Other metrics should still work
+    assert "average_vol" in metrics
+    assert "skew_1m" in metrics
+
+def test_metrics_consistency(basic_grid, sabr_model):
+    """Test if metrics are internally consistent"""
+    surface = VolatilitySurface(sabr_model)
+    surface.generate_surface(basic_grid)
+    
+    # Get metrics and raw surface data
+    metrics = surface.compute_metrics()
+    raw_surface = surface._cached_surface
+    
+    # Average vol should match numpy mean (within floating point precision)
+    np.testing.assert_almost_equal(
+        metrics["average_vol"],
+        np.mean(raw_surface),
+        decimal=10
+    )
+    
+    # Min/Max should match numpy min/max
+    np.testing.assert_almost_equal(metrics["min_vol"], np.min(raw_surface), decimal=10)
+    np.testing.assert_almost_equal(metrics["max_vol"], np.max(raw_surface), decimal=10)

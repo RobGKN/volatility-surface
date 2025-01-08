@@ -3,7 +3,7 @@ import numpy as np
 from dataclasses import dataclass
 import logging
 from volsurface.models.sabr import SABRParameters, SABRModel
-
+from volsurface.metrics.surface_metrics import SurfaceMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -241,20 +241,161 @@ class VolatilitySurface:
         
     def compute_metrics(self) -> Dict[str, float]:
         """
-        Calculate key surface metrics including:
-            - ATM term structure
-            - Skew parameters
-            - Surface summary statistics
+        Compute key surface metrics. Current implementation focuses on
+        essential metrics needed for visualization and basic analysis.
+        
+        Returns:
+            Dictionary containing core surface metrics including ATM levels,
+            basic shape parameters, and summary statistics.
+            
+        Raises:
+            ValueError: If surface hasn't been generated
         """
-        pass
+        if self._cached_surface is None or self._cached_grid is None:
+            raise ValueError("Surface must be generated before computing metrics")
+            
+        metrics = SurfaceMetrics(
+            surface=self._cached_surface,
+            strikes=self._cached_grid.strikes,
+            maturities=self._cached_grid.maturities,
+            spot=self._cached_grid.spot
+        )
+        
+        return metrics.compute_basic_metrics()
 
     def to_visualization_format(self) -> Dict:
         """
-        Convert surface data to format suitable for 3D visualization
+        Convert surface data to format suitable for 3D visualization.
         
-        Returns dictionary with:
-            - Coordinates (strikes, maturities)
-            - Volatility values
-            - Metadata for rendering
+        Returns:
+            Dictionary containing:
+            - vertices: List of [x,y,z] coordinates for each point
+            - indices: Triangle indices for mesh construction
+            - colors: Color values for each vertex
+            - gridLines: Reference grid data
+            - metadata: Rendering hints and surface properties
+            - bounds: Min/max values for scaling
+            - markers: Special points (ATM line, etc.)
+            
+        Raises:
+            ValueError: If surface hasn't been generated
         """
-        pass
+        if self._cached_surface is None or self._cached_grid is None:
+            raise ValueError("Surface must be generated before visualization")
+            
+        # Get raw data
+        surface = self._cached_surface
+        grid = self._cached_grid
+        
+        # Validate data shape and content
+        if surface.shape != (len(grid.strikes), len(grid.maturities)):
+            raise ValueError(f"Surface shape {surface.shape} doesn't match grid dimensions: "
+                            f"strikes={len(grid.strikes)}, maturities={len(grid.maturities)}")
+        
+        if np.any(np.isnan(surface)) or np.any(np.isinf(surface)):
+            raise ValueError("Surface contains NaN or Inf values")
+        
+        try:
+            
+            # Normalize coordinates for visualization
+            # Convert strikes to moneyness (centered around 1.0)
+            norm_strikes = grid.strikes / grid.spot
+            # Convert maturities to percentage of max maturity
+            norm_maturities = grid.maturities / np.max(grid.maturities)
+            
+            # Generate vertices array
+            vertices = []
+            colors = []
+            
+            # Color mapping parameters
+            vol_min, vol_max = np.min(surface), np.max(surface)
+            
+            for i, k in enumerate(norm_strikes):
+                for j, t in enumerate(norm_maturities):
+                    # Add vertex
+                    vertices.append([
+                        float(k - 1.0),  # Center moneyness around 0
+                        float(t),
+                        float(surface[i,j])
+                    ])
+                    
+                    # Generate color (blue scale based on volatility)
+                    vol_level = (surface[i,j] - vol_min) / (vol_max - vol_min)
+                    colors.append([
+                        0.0,  # R
+                        0.3 + 0.7 * vol_level,  # G
+                        0.5 + 0.5 * vol_level,  # B
+                    ])
+            
+            # Generate triangle indices for mesh
+            indices = []
+            n_rows = len(norm_strikes)
+            n_cols = len(norm_maturities)
+            
+            for i in range(n_rows - 1):
+                for j in range(n_cols - 1):
+                    # Two triangles per grid square
+                    p0 = i * n_cols + j
+                    p1 = p0 + 1
+                    p2 = (i + 1) * n_cols + j
+                    p3 = p2 + 1
+                    
+                    # First triangle
+                    indices.extend([p0, p2, p1])
+                    # Second triangle
+                    indices.extend([p1, p2, p3])
+            
+            # Generate grid lines for reference
+            grid_lines = {
+                "strikes": [float(k - 1.0) for k in norm_strikes],
+                "maturities": [float(t) for t in norm_maturities]
+            }
+            
+            # Find ATM line points
+            atm_idx = np.abs(norm_strikes - 1.0).argmin()
+            atm_line = [
+                [0.0, float(t), float(surface[atm_idx,j])]
+                for j, t in enumerate(norm_maturities)
+            ]
+            
+            # Calculate key surface metrics for metadata
+            metrics = self.compute_metrics()
+            
+            return {
+                "vertices": vertices,
+                "indices": indices,
+                "colors": colors,
+                "gridLines": grid_lines,
+                "markers": {
+                    "atmLine": atm_line
+                },
+                "bounds": {
+                    "strikes": [float(np.min(norm_strikes) - 1.0), 
+                            float(np.max(norm_strikes) - 1.0)],
+                    "maturities": [0.0, 1.0],
+                    "volatility": [float(vol_min), float(vol_max)]
+                },
+                "metadata": {
+                    "spotPrice": float(grid.spot),
+                    "maxMaturity": float(np.max(grid.maturities)),
+                    "atmVol": float(metrics["atm_vol"]),
+                    "surfaceSkew": float(metrics["skew_1m"]),
+                    "termStructureSlope": float(metrics["term_structure_slope"]),
+                    "timestamp": "2024-01-08T00:00:00Z",  # Add actual timestamp if available
+                    "renderHints": {
+                        "initialRotation": [-0.5, 0.0, 0.0],
+                        "cameraDistance": 2.0,
+                        "gridOpacity": 0.2,
+                        "meshOpacity": 0.8
+                    }
+                }
+            }
+        except np.linalg.LinAlgError as e:
+            logger.error(f"Linear algebra error in visualization formatting: {str(e)}")
+            raise RuntimeError(f"Failed to process surface for visualization: {str(e)}")
+        except ValueError as e:
+            logger.error(f"Value error in visualization formatting: {str(e)}")
+            raise RuntimeError(f"Invalid values encountered in surface: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error in visualization formatting: {str(e)}")
+            raise RuntimeError(f"Failed to format surface for visualization: {str(e)}")
