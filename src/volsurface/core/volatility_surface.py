@@ -435,6 +435,7 @@ class VolatilitySurface:
             # Compute metrics once
             metrics = self.compute_metrics()
             
+            
             # Format for return
             # Note: tolist() converts numpy arrays to Python lists for JSON serialization
             return {

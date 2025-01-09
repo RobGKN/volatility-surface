@@ -4,18 +4,13 @@ import { Card, CardTitle, CardContent } from './components/Card';
 import { fetchSurfaceData, type SurfaceRequestParams } from './api/surface';
 import './App.css';
 import MarketControls from './components/MarketControls';
+import { SurfaceData } from './types';
 
 interface SABRParameters {
   alpha: number;
   beta: number;
   rho: number;
   nu: number;
-}
-
-interface SurfaceData {
-  strikes: number[];
-  maturities: number[];
-  volatilities: number[][];
 }
 
 function App() {
@@ -75,9 +70,10 @@ function App() {
         
         const response = await fetchSurfaceData(requestParams);
         setSurfaceData({
-          strikes: response.data.x,
-          maturities: response.data.y,
-          volatilities: response.data.z
+          x: response.data.x,           // Changed from strikes
+          y: response.data.y,           // Changed from maturities
+          z: response.data.z,           // Changed from volatilities
+          modelParams: parameters       // Add this if you want to pass SABR parameters
         });
       } catch (error) {
         console.error('Error fetching surface data:', error);

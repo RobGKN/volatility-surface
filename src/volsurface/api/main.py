@@ -40,6 +40,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def validate_surface_data(surface_data):
+        """For debugging to_vizualization"""
+        strikes = surface_data['x']
+        maturities = surface_data['y']
+        surface = surface_data['z']
+        
+        # Check dimensions
+        if len(surface) != len(strikes):
+            raise ValueError(f"Surface first dimension ({len(surface)}) doesn't match strikes ({len(strikes)})")
+        
+        if any(len(row) != len(maturities) for row in surface):
+            raise ValueError("Surface second dimension doesn't match maturities")
+        
+        # Check for reasonable values
+        if any(v <= 0 or v > 2 for row in surface for v in row):
+            raise ValueError("Found unreasonable volatility values (<=0 or >200%)")
+        
+        # Print sample values
+        print(f"Surface shape: {len(surface)}x{len(surface[0])}")
+        print(f"Sample values:")
+        print(f"- Top left (shortest maturity, lowest strike): {surface[0][0]:.4f}")
+        print(f"- Top right (shortest maturity, highest strike): {surface[-1][0]:.4f}")
+        print(f"- Bottom left (longest maturity, lowest strike): {surface[0][-1]:.4f}")
+        print(f"- Bottom right (longest maturity, highest strike): {surface[-1][-1]:.4f}")
+
 @app.post("/api/surface")
 async def generate_surface(params: SurfaceParams):
     try:
@@ -66,6 +91,9 @@ async def generate_surface(params: SurfaceParams):
         # Generate surface
         surface.generate_surface(grid)
         surface_data = surface.to_visualization_format()
+        
+        # for debugging
+        validate_surface_data(surface_data)
         
         return {
             "success": True,

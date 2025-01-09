@@ -1,17 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Plot from 'react-plotly.js';
+import { SurfaceData } from '../types';
 
-interface SurfaceData {
-  strikes: number[];
-  maturities: number[];
-  volatilities: number[][];
-  modelParams?: {
-    alpha: number;
-    beta: number;
-    rho: number;
-    nu: number;
-  };
-}
 
 interface VolatilitySurfaceProps {
   data: SurfaceData;
@@ -32,6 +22,27 @@ const VolatilitySurface: React.FC<VolatilitySurfaceProps> = ({ data }) => {
     return () => window.removeEventListener('resize', updateHeight);
   }, []);
 
+  useEffect(() => {
+    console.log("Raw surface data received:", data);
+    
+    // Check data shapes
+    console.log("Data dimensions:", {
+      x_length: data.x?.length,
+      y_length: data.y?.length,
+      z_length: data.z?.length,
+      z_first_row_length: data.z?.[0]?.length
+    });
+  
+    // Check corner values
+    console.log("Corner values:", {
+      topLeft: data.z?.[0]?.[0],
+      topRight: data.z?.[data.z?.length-1]?.[0],
+      bottomLeft: data.z?.[0]?.[data.z?.length-1],
+      bottomRight: data.z?.[data.z?.length-1]?.[data.z?.length-1]
+    });
+  
+  }, [data]);
+
   return (
     <div className="w-full h-full flex flex-col">
       <div 
@@ -42,9 +53,9 @@ const VolatilitySurface: React.FC<VolatilitySurfaceProps> = ({ data }) => {
           data={[
             {
               type: 'surface',
-              x: data.strikes,
-              y: data.maturities,
-              z: data.volatilities,
+              x: data.x,
+              y: data.y,
+              z: data.z,
               colorscale: 'Viridis',
               showscale: true,
               hoverongaps: false,
