@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import VolatilitySurface from './components/VolatilitySurface';
 import { Card, CardTitle, CardContent } from './components/Card';
 import { fetchSurfaceData, type SurfaceRequestParams } from './api/surface';
