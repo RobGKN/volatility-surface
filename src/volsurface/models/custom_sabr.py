@@ -1,17 +1,19 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 import numpy as np
 from scipy.optimize import minimize
 
 from ..core.black_scholes import BSMInputs, BlackScholes, OptionType, ImpliedVolatility
+from .base import ModelParameters, VolatilityModel
+from ..core.black_scholes import ImpliedVolatility
 
-@dataclass
-class SABRParameters:
+class SABRParameters(ModelParameters):
     """SABR model parameters"""
-    alpha: float  # Initial volatility (similar to Black-Scholes sigma)
-    beta: float   # CEV parameter (0 <= beta <= 1)
-    rho: float    # Correlation between spot and vol (-1 <= rho <= 1)
-    nu: float     # Volatility of volatility (volvol)
+    def __init__(self, alpha: float, beta: float, rho: float, nu: float):
+        self.alpha = alpha  # Initial volatility (similar to Black-Scholes sigma)
+        self.beta = beta    # CEV parameter (0 <= beta <= 1)
+        self.rho = rho      # Correlation between spot and vol (-1 <= rho <= 1)
+        self.nu = nu        # Volatility of volatility (volvol)
     
     def validate(self) -> None:
         """Validate SABR parameters are within valid ranges"""
@@ -22,56 +24,106 @@ class SABRParameters:
         if self.alpha <= 0 or self.nu <= 0:
             raise ValueError("Alpha and nu must be positive")
 
-class SABRModel:
+class CustomSABRModel(VolatilityModel):
     """
-    Stochastic Alpha Beta Rho (SABR) model implementation with Monte-Carlo
-    
-    The SABR model is defined by the following SDEs:
-    dF_t = α_t * F_t^β * dW_t
-    dα_t = ν * α_t * dZ_t
-    <W,Z>_t = ρ dt
+    Custom implementation of the SABR model
     """
-    
     def __init__(self, 
-                 params: SABRParameters,
-                 tolerance: float = 1e-5,
-                 max_iterations: int = 100,
-                 moneyness_threshold: float = 0.1):  # Switch to MC when |F-K|/F > threshold
-        """
-        Initialize SABR model with parameters
-        """
-        self.params = params
-        self.params.validate()
-        self.iv_calculator = ImpliedVolatility(tolerance, max_iterations)
+                params: SABRParameters,
+                tolerance: float = 1e-5,
+                max_iterations: int = 100,
+                moneyness_threshold: float = 0.1):
+        self._params = params
+        self._params.validate()
+        self.tolerance = tolerance
+        self.max_iterations = max_iterations
         self.moneyness_threshold = moneyness_threshold
         
+    @property
+    def parameters(self) -> ModelParameters:
+        return self._params
+
     def implied_volatility(self, F: float, K: float, T: float) -> float:
-        """
-        Calculate implied volatility using hybrid approach
-        """
-        # Input validation and conversion
-        F = float(F)
-        K = float(K)
-        T = float(T)
-        
-        if F <= 0 or K <= 0:
-            raise ValueError("Forward and strike prices must be positive")
-        if T <= 0:
-            raise ValueError("Time to expiry must be positive")
-            
-        # Determine relative moneyness
-        moneyness = abs(F - K) / F
-        
-        
+        """Calculate implied volatility using existing implementation"""
         return self._hagan_implied_vol(F, K, T)
         
-        ## Use Hagan for ATM and near-ATM
-        #if moneyness <= self.moneyness_threshold:
-        #    return self._hagan_implied_vol(F, K, T)
-        #
-        ## Use Monte Carlo for far strikes
-        #return self._mc_implied_vol(F, K, T)
-    
+    def calibrate(self,
+                market_vols: np.ndarray,
+                strikes: np.ndarray,
+                forwards: np.ndarray,
+                times: np.ndarray) -> Dict[str, Any]:
+        """
+        Calibrate SABR parameters to market data
+        """
+        def objective(x):
+            alpha, beta, rho, nu = x
+            
+            # Add penalty for parameters near bounds
+            if not (0 < beta < 1 and -1 < rho < 1 and alpha > 0 and nu > 0):
+                return 1e6
+            
+            try:
+                # Update parameters temporarily
+                temp_params = SABRParameters(alpha, beta, rho, nu)
+                self._params = temp_params
+                
+                # Calculate model vols
+                model_vols = np.array([
+                    self.implied_volatility(f, k, t)
+                    for f, k, t in zip(forwards, strikes, times)
+                ])
+                
+                # Weighted MSE with emphasis on ATM options
+                weights = np.exp(-0.5 * ((strikes - forwards) / forwards) ** 2)
+                mse = np.mean(weights * (market_vols - model_vols) ** 2)
+                
+                # Add regularization
+                reg_strength = 0.1
+                reg_beta = reg_strength * (beta - 0.5) ** 2
+                reg_nu = reg_strength * nu ** 2
+                
+                return mse + reg_beta + reg_nu
+                
+            except (ValueError, RuntimeError):
+                return 1e6
+        
+        # Initial guess from current parameters
+        x0 = [
+            self._params.alpha,
+            self._params.beta,
+            self._params.rho,
+            self._params.nu
+        ]
+        
+        # Run optimization
+        result = minimize(
+            objective, x0,
+            method='Nelder-Mead',
+            options={'maxiter': 1000, 'xatol': 1e-8}
+        )
+        
+        # Update parameters with optimal values
+        self._params = SABRParameters(
+            alpha=result.x[0],
+            beta=result.x[1],
+            rho=result.x[2],
+            nu=result.x[3]
+        )
+        
+        return {
+            "success": result.success,
+            "final_error": result.fun,
+            "iterations": result.nit,
+            "message": result.message,
+            "parameters": {
+                "alpha": self._params.alpha,
+                "beta": self._params.beta,
+                "rho": self._params.rho,
+                "nu": self._params.nu
+            }
+        }
+
+    # Keep existing helper methods
     def _hagan_implied_vol(self, F: float, K: float, T: float) -> float:
         """
         Hagan's formula for implied volatility (corrected version)

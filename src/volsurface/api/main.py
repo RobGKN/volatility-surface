@@ -4,8 +4,11 @@ import numpy as np
 from pydantic import BaseModel
 from typing import Dict, List, Optional
 
-from ..models.sabr import SABRModel, SABRParameters
+from ..models.factory import ModelFactory
+from pydantic import BaseModel
 from ..core.volatility_surface import VolatilitySurface, SurfaceGrid
+
+app = FastAPI(title="Volatility Surface API")
 
 # Define the SABR parameters model
 class SABRParamsModel(BaseModel):
@@ -14,15 +17,14 @@ class SABRParamsModel(BaseModel):
     rho: float
     nu: float
 
-# Define the surface parameters model - renamed field to match request
 class SurfaceParams(BaseModel):
     strikes: List[float]
     maturities: List[float]
     spot: float
     rate: float = 0.0
     sabr_params: SABRParamsModel
+    model_type: str = "quantlib_sabr"
 
-app = FastAPI(title="Volatility Surface API")
 
 # Enable CORS for frontend development
 app.add_middleware(
@@ -41,24 +43,19 @@ app.add_middleware(
 @app.post("/api/surface")
 async def generate_surface(params: SurfaceParams):
     try:
-        print(f"Full parameters object: {params}")
-        print(f"SABR parameters: {params.sabr_params}")
-        
-        # Create SABR parameters
-        sabr_params = SABRParameters(
-            alpha=params.sabr_params.alpha,
-            beta=params.sabr_params.beta,
-            rho=params.sabr_params.rho,
-            nu=params.sabr_params.nu
+        # Create model using factory
+        model = ModelFactory.create_model(
+            params.model_type,
+            {
+                'alpha': params.sabr_params.alpha,
+                'beta': params.sabr_params.beta,
+                'rho': params.sabr_params.rho,
+                'nu': params.sabr_params.nu
+            }
         )
         
-        # Create SABR model
-        model = SABRModel(params=sabr_params)
-        
-        # Create volatility surface object
+        # Rest of the implementation remains the same
         surface = VolatilitySurface(model=model)
-        
-        # Create surface grid from input parameters
         grid = SurfaceGrid(
             strikes=np.array(params.strikes),
             maturities=np.array(params.maturities),
@@ -66,10 +63,8 @@ async def generate_surface(params: SurfaceParams):
             rate=params.rate
         )
         
-        # Generate the surface on the grid
+        # Generate surface
         surface.generate_surface(grid)
-        
-        # Now we can get the visualization data
         surface_data = surface.to_visualization_format()
         
         return {
@@ -78,6 +73,7 @@ async def generate_surface(params: SurfaceParams):
             "metadata": {
                 "spot": params.spot,
                 "rate": params.rate,
+                "model_type": params.model_type,
                 "sabr_params": {
                     "alpha": params.sabr_params.alpha,
                     "beta": params.sabr_params.beta,
