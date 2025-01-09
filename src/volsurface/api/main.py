@@ -27,7 +27,11 @@ app = FastAPI(title="Volatility Surface API")
 # Enable CORS for frontend development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust this for production
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://your-vercel-url.vercel.app"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
