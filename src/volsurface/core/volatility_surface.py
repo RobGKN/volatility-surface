@@ -9,8 +9,20 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SurfaceGrid:
-    # This stays the same
-    ...
+    """Represents the discretization grid for the volatility surface"""
+    strikes: np.ndarray    # Array of strike prices
+    maturities: np.ndarray # Array of maturities in years
+    spot: float           # Current spot price
+    rate: float          # Risk-free rate
+
+    def validate(self) -> None:
+        """Validate grid parameters are within reasonable bounds"""
+        if not (self.strikes.ndim == 1 and self.maturities.ndim == 1):
+            raise ValueError("Strikes and maturities must be 1D arrays")
+        if np.any(self.strikes <= 0) or np.any(self.maturities <= 0):
+            raise ValueError("Strikes and maturities must be positive")
+        if self.spot <= 0:
+            raise ValueError("Spot price must be positive")
 
 class VolatilitySurface:
     def __init__(self, model: VolatilityModel):  # Change type hint to base class
