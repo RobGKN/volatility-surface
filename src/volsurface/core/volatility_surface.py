@@ -2,30 +2,18 @@ from typing import Optional, Union, Tuple, Dict
 import numpy as np
 from dataclasses import dataclass
 import logging
-from volsurface.models.sabr import SABRParameters, SABRModel
+from volsurface.models import VolatilityModel  # Import base class instead
 from volsurface.metrics.surface_metrics import SurfaceMetrics
 
 logger = logging.getLogger(__name__)
 
 @dataclass
 class SurfaceGrid:
-    """Represents the discretization grid for the volatility surface"""
-    strikes: np.ndarray    # Array of strike prices
-    maturities: np.ndarray # Array of maturities in years
-    spot: float           # Current spot price
-    rate: float          # Risk-free rate
+    # This stays the same
+    ...
 
-    def validate(self) -> None:
-        """Validate grid parameters are within reasonable bounds"""
-        if not (self.strikes.ndim == 1 and self.maturities.ndim == 1):
-            raise ValueError("Strikes and maturities must be 1D arrays")
-        if np.any(self.strikes <= 0) or np.any(self.maturities <= 0):
-            raise ValueError("Strikes and maturities must be positive")
-        if self.spot <= 0:
-            raise ValueError("Spot price must be positive")
-        
 class VolatilitySurface:
-    def __init__(self, model: 'SABRModel'):
+    def __init__(self, model: VolatilityModel):  # Change type hint to base class
         self.model = model
         self._cached_surface: Optional[np.ndarray] = None
         self._cached_grid: Optional[SurfaceGrid] = None
