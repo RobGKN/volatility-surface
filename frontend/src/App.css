@@ -1,42 +1,75 @@
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  height: 100vh;
+  width: 100vw;
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas: 
+    "header header"
+    "main sidebar"
+    "metrics sidebar";
+  background-color: var(--background-primary);
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.header {
+  grid-area: header;
+  background-color: var(--background-secondary);
+  padding: 1rem 2rem;
+  border-bottom: 1px solid var(--border-color);
+  z-index: 10;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.main {
+  grid-area: main;
+  overflow: hidden;
+  padding: 1rem;
+  background-color: var(--background-primary);
+  display: flex;
+  flex-direction: column;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.sidebar {
+  grid-area: sidebar;
+  padding: 1.5rem;
+  background-color: var(--background-secondary);
+  border-left: 1px solid var(--border-color);
+  overflow-y: auto;
+  z-index: 5;
 }
 
-.card {
-  padding: 2em;
+.metrics-area {
+  grid-area: metrics;
+  padding: 1rem 2rem;
+  background-color: var(--background-primary);
+  border-top: 1px solid var(--border-color);
 }
 
-.read-the-docs {
-  color: #888;
+/* Parameter controls styling */
+.parameter-controls {
+  background-color: var(--background-secondary);
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+}
+
+/* Input styling */
+input[type="range"] {
+  width: 100%;
+  margin: 0.5rem 0;
+}
+
+.parameter-group {
+  margin-bottom: 1.5rem;
+}
+
+.parameter-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.parameter-value {
+  font-family: monospace;
+  color: var(--text-secondary);
 }

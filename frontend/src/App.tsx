@@ -1,12 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import VolatilitySurface from './components/VolatilitySurface';
-import ParameterControls from './components/ParameterControls';
+import { Card, CardTitle, CardContent } from './components/Card';
+import { fetchSurfaceData, type SurfaceRequestParams } from './api/surface';
+import './App.css';
 import MarketControls from './components/MarketControls';
-import { fetchSurfaceData } from './api/surface';
-import type { SABRParameters, SurfaceData } from './api/surface';
+
+interface SABRParameters {
+  alpha: number;
+  beta: number;
+  rho: number;
+  nu: number;
+}
+
+interface SurfaceData {
+  strikes: number[];
+  maturities: number[];
+  volatilities: number[][];
+}
 
 function App() {
-  // States remain the same as before...
   const [parameters, setParameters] = useState<SABRParameters>({
     alpha: 0.2,
     beta: 0.5,
@@ -25,12 +37,9 @@ function App() {
     }
   });
 
-  // Other state and functions remain the same...
   const [surfaceData, setSurfaceData] = useState<SurfaceData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  // The existing functions (generateGrid, updateSurface, etc.) remain the same...
   const generateGrid = () => {
     const { strikeRange, maturityRange, gridDensity } = marketParams;
     
@@ -47,96 +56,85 @@ function App() {
     return { strikes, maturities };
   };
 
-  const updateSurface = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const grid = generateGrid();
-      const response = await fetchSurfaceData({
-        strikes: grid.strikes,
-        maturities: grid.maturities,
-        spot: marketParams.spot,
-        rate: marketParams.rate,
-        sabr_params: parameters
-      });
-
-      setSurfaceData(response.data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch surface data');
-      console.error('Error updating surface:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    updateSurface();
-  }, [parameters, marketParams]);
-
-  const handleParameterChange = (param: string, value: number) => {
+  const handleParameterChange = (param: keyof SABRParameters, value: number) => {
     setParameters(prev => ({ ...prev, [param]: value }));
   };
 
-  const handleMarketParamsUpdate = (updates: Partial<typeof marketParams>) => {
-    setMarketParams(prev => ({ ...prev, ...updates }));
-  };
+  useEffect(() => {
+    const updateSurface = async () => {
+      setLoading(true);
+      try {
+        const grid = generateGrid();
+        const requestParams: SurfaceRequestParams = {
+          strikes: grid.strikes,
+          maturities: grid.maturities,
+          spot: marketParams.spot,
+          rate: marketParams.rate,
+          sabr_params: parameters
+        };
+        
+        const response = await fetchSurfaceData(requestParams);
+        setSurfaceData({
+          strikes: response.data.x,
+          maturities: response.data.y,
+          volatilities: response.data.z
+        });
+      } catch (error) {
+        console.error('Error fetching surface data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const transformedData = surfaceData ? {
-    strikes: surfaceData.x,
-    maturities: surfaceData.y,
-    volatilities: surfaceData.z,
-    modelParams: parameters
-  } : null;
+    updateSurface();
+  }, [parameters, marketParams]);
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Title Bar */}
-      <div className="w-full bg-white shadow-sm px-4 py-3">
-        <h1 className="text-2xl font-bold text-gray-900">Volatility Surface Explorer</h1>
-        {surfaceData && (
-          <div className="mt-1 text-sm text-gray-600">
-            ATM Vol: {(surfaceData.metrics.atm_vol * 100).toFixed(2)}% | 
-            Skew (1m): {(surfaceData.metrics.skew_1m * 100).toFixed(2)}% | 
-            Term Structure Slope: {(surfaceData.metrics.term_structure_slope * 100).toFixed(4)}%
+    <>
+      <div className="header">
+        <h1 className="text-2xl font-bold">Volatility Surface Explorer</h1>
+      </div>
+
+      <div className="main">
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-lg">Loading...</div>
           </div>
+        ) : surfaceData && (
+          <VolatilitySurface data={surfaceData} />
         )}
       </div>
 
-      {/* Main Content */}
-      <div className="flex w-full min-h-[calc(100vh-80px)]">
-        {/* Surface Plot Container - Fixed width */}
-        <div className="w-[800px] p-4">
-          <div className="bg-white rounded shadow-lg p-4 h-full">
-            <div className="h-[600px]">
-              {loading ? (
-                <div className="flex items-center justify-center h-full">
-                  <span className="text-lg text-gray-500">Loading...</span>
+      <div className="sidebar">
+        <Card>
+          <CardTitle>SABR Parameters</CardTitle>
+          <CardContent>
+            {Object.entries(parameters).map(([param, value]) => (
+              <div key={param} className="mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-gray-300">{param.toUpperCase()}</span>
+                  <span className="font-mono text-gray-400">{value.toFixed(2)}</span>
                 </div>
-              ) : transformedData && (
-                <VolatilitySurface data={transformedData} />
-              )}
-            </div>
-          </div>
-        </div>
+                <input
+                  type="range"
+                  min={-1}
+                  max={1}
+                  step={0.01}
+                  value={value}
+                  onChange={(e) => handleParameterChange(param as keyof SABRParameters, parseFloat(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
 
-        {/* Parameters Container - Takes remaining width */}
-        <div className="flex-1 p-4 space-y-4">
-          <div className="bg-white rounded shadow-lg">
-            <ParameterControls 
-              parameters={parameters}
-              onParameterChange={handleParameterChange}
-            />
-          </div>
-          <div className="bg-white rounded shadow-lg">
-            <MarketControls 
-              {...marketParams}
-              onUpdate={handleMarketParamsUpdate}
-            />
-          </div>
-        </div>
+        <MarketControls
+          {...marketParams}
+          onUpdate={(updates) => setMarketParams(prev => ({ ...prev, ...updates }))}
+        />
       </div>
-    </div>
+    </>
   );
 }
 
