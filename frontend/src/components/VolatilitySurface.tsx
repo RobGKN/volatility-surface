@@ -55,7 +55,7 @@ const VolatilitySurface: React.FC<VolatilitySurfaceProps> = ({ data }) => {
               type: 'surface',
               x: data.x,
               y: data.y,
-              z: data.z,
+              z: data.z[0].map((_, colIndex) => data.z.map(row => row[colIndex])),  // hack switch of vals
               colorscale: 'Viridis',
               showscale: true,
               hoverongaps: false,
