@@ -23,7 +23,7 @@ class SurfaceParams(BaseModel):
     spot: float
     rate: float = 0.0
     sabr_params: SABRParamsModel
-    model_type: str = "quantlib_sabr"
+    model_type: str = "custom_sabr"
 
 
 # Enable CORS for frontend development

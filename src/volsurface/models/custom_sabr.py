@@ -123,63 +123,50 @@ class CustomSABRModel(VolatilityModel):
             }
         }
 
-    # Keep existing helper methods
     def _hagan_implied_vol(self, F: float, K: float, T: float) -> float:
         """
-        Hagan's formula for implied volatility (corrected version)
+        Hagan (2002) lognormal SABR implied-volatility approximation.
         """
-        alpha = self.params.alpha
-        beta = self.params.beta
-        rho = self.params.rho
-        nu = self.params.nu
-        
-        # For numerical stability
+        alpha = self._params.alpha
+        beta = self._params.beta
+        rho = self._params.rho
+        nu = self._params.nu
+
         eps = 1e-10
-        
-        # Handle ATM case separately (F ≈ K)
+        one_minus_beta = 1.0 - beta
+
+        # At-the-money limit (F == K)
         if abs(F - K) < eps:
-            # ATM volatility (Eq 2.17a from Hagan's paper)
-            forward_factor = F**(1-beta)
-            A = alpha / forward_factor
-            
-            # Correction terms
-            log_term = (1 - beta)**2 * np.log(F)**2 / 24
-            mixed_term = rho * beta * nu * alpha / (4 * forward_factor)
-            vol_vol_term = (2 - 3*rho**2) * nu**2 / 24
-            
-            return A * (1 + (log_term + mixed_term + vol_vol_term) * T)
-            
-        # Non-ATM case
-        # Forward measure change
-        F_K_mid = (F + K) / 2
-        F_K_ratio = F / K
-        log_F_K = np.log(F_K_ratio)
-        
-        # z calculation with stability
-        z = (nu / alpha) * F_K_mid**(1-beta) * log_F_K
-        
-        # Handle small z carefully
+            f_pow = F ** one_minus_beta
+            atm = alpha / f_pow
+            term1 = one_minus_beta ** 2 / 24 * (alpha / f_pow) ** 2
+            term2 = rho * beta * nu * alpha / (4 * f_pow)
+            term3 = (2 - 3 * rho ** 2) * nu ** 2 / 24
+            return atm * (1 + (term1 + term2 + term3) * T)
+
+        log_fk = np.log(F / K)
+        fk_pow = (F * K) ** (one_minus_beta / 2)
+
+        z = (nu / alpha) * fk_pow * log_fk
         if abs(z) < eps:
-            x_z = 1  # limz->0 z/x(z) = 1
+            z_over_x = 1.0
         else:
-            chi = np.log((np.sqrt(1 - 2*rho*z + z**2) + z - rho) / (1 - rho))
-            x_z = z / chi
-        
-        # Main components of formula
-        forward_factor = alpha / (F_K_mid**(1-beta))
-        gamma1 = beta**2 / (24 * F_K_mid**2)
-        gamma2 = beta**4 / (1920 * F_K_mid**4)
-        
-        # Volatility dynamics correction
-        D1 = (1 - beta)**2 / 24 * (alpha / F_K_mid**(1-beta))**2
-        D2 = rho * beta * nu * alpha / (4 * F_K_mid**(1-beta))
-        D3 = (2 - 3*rho**2) * nu**2 / 24
-        
-        implied_vol = forward_factor * x_z * (
-            1 + (D1 + D2 + D3) * T
+            chi = np.log((np.sqrt(1 - 2 * rho * z + z ** 2) + z - rho) / (1 - rho))
+            z_over_x = z / chi
+
+        denominator = (
+            1
+            + (one_minus_beta ** 2 / 24) * log_fk ** 2
+            + (one_minus_beta ** 4 / 1920) * log_fk ** 4
         )
-        
-        return max(0.001, min(5.0, implied_vol))  # Ensure reasonable bounds
+        prefactor = alpha / (fk_pow * denominator)
+
+        term1 = one_minus_beta ** 2 / 24 * (alpha / fk_pow) ** 2
+        term2 = rho * beta * nu * alpha / (4 * fk_pow)
+        term3 = (2 - 3 * rho ** 2) * nu ** 2 / 24
+
+        implied_vol = prefactor * z_over_x * (1 + (term1 + term2 + term3) * T)
+        return max(0.001, min(5.0, implied_vol))
         
     def _mc_implied_vol(self, F: float, K: float, T: float) -> float:
         """
@@ -188,7 +175,7 @@ class CustomSABRModel(VolatilityModel):
         option_price = self._monte_carlo_price(F, K, T)
         
         # Use a more robust initial guess
-        initial_sigma = self.params.alpha * (F / K)**(self.params.beta - 1.0)
+        initial_sigma = self._params.alpha * (F / K)**(self._params.beta - 1.0)
         
         bsm_inputs = BSMInputs(
             S=float(F),
@@ -233,11 +220,11 @@ class CustomSABRModel(VolatilityModel):
         
         # Initialize paths with explicit float64 dtype
         F_t = np.full(n_paths, F, dtype=np.float64)
-        alpha_t = np.full(n_paths, self.params.alpha, dtype=np.float64)
+        alpha_t = np.full(n_paths, self._params.alpha, dtype=np.float64)
         
         # Generate correlated Brownian motions
         dW1 = np.random.normal(0, 1, (n_steps, n_paths))
-        dW2 = self.params.rho * dW1 + np.sqrt(1 - self.params.rho**2) * \
+        dW2 = self._params.rho * dW1 + np.sqrt(1 - self._params.rho**2) * \
               np.random.normal(0, 1, (n_steps, n_paths))
         
         # Pre-allocate array for variance reduction
@@ -250,12 +237,12 @@ class CustomSABRModel(VolatilityModel):
             alpha_t = np.maximum(alpha_t, 1e-10)
             
             # SABR dynamics with stability controls
-            F_power = np.power(F_t, self.params.beta)
+            F_power = np.power(F_t, self._params.beta)
             F_power = np.minimum(F_power, 1e10)  # Prevent explosion
             
             # Calculate increments with scaling
             dF = alpha_t * F_power * dW1[i] * sqrt_dt
-            dalpha = self.params.nu * alpha_t * dW2[i] * sqrt_dt
+            dalpha = self._params.nu * alpha_t * dW2[i] * sqrt_dt
             
             # Update with stability checks
             F_t_new = F_t + dF
@@ -322,7 +309,7 @@ class CustomSABRModel(VolatilityModel):
                 return 1e6
             
             params = SABRParameters(alpha, beta, rho, nu)
-            self.params = params  # Update model parameters
+            self._params = params  # Update model parameters
             
             # Calculate model vols
             try:
