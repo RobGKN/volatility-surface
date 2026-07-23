@@ -36,3 +36,6 @@ ENV/
 *.csv
 *.xlsx
 node_modules/
+
+# Personal notes (keep local, not for GitHub)
+experience_doc/
