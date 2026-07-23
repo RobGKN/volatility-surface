@@ -3,7 +3,7 @@ import numpy as np
 from copy import deepcopy
 
 from volsurface.core.volatility_surface import VolatilitySurface, SurfaceGrid
-from volsurface.models.sabr import SABRModel, SABRParameters
+from volsurface.models.custom_sabr import CustomSABRModel, SABRParameters
 
 # Reuse existing fixtures for consistency
 @pytest.fixture
@@ -25,7 +25,7 @@ def sabr_model():
         rho=-0.2,
         nu=0.4
     )
-    return SABRModel(params)
+    return CustomSABRModel(params)
 
 @pytest.fixture
 def basic_surface(basic_grid, sabr_model):

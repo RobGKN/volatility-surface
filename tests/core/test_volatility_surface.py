@@ -3,7 +3,7 @@ import numpy as np
 from copy import deepcopy
 
 from volsurface.core.volatility_surface import VolatilitySurface, SurfaceGrid
-from volsurface.models.sabr import SABRModel, SABRParameters
+from volsurface.models.custom_sabr import CustomSABRModel, SABRParameters
 
 @pytest.fixture
 def basic_grid():
@@ -24,7 +24,7 @@ def sabr_model():
         rho=-0.2,   # Correlation
         nu=0.4      # Vol of vol
     )
-    model = SABRModel(params)
+    model = CustomSABRModel(params)
     print(f"Type of model in fixture: {type(model)}")
     return model
 
